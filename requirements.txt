@@ -1,0 +1,10 @@
+clickupython
+python-dotenv
+pandas
+requests
+pydantic
+python-dateutil
+lxml
+reportlab
+pytest
+pytest-cov

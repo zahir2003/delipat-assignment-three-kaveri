@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / local runtime
+*.log
+*.tmp
+*.sqlite
+*.db
+
+# Confidential client data
+/data/raw/*
+/data/processed/*
+
+# Generated artifacts
+/artifacts/bills/*
+/artifacts/screenshots/*
+/artifacts/recording/*
+
+# Local model/cache files
+/models/
+/.ollama/
+
+# Keep folder placeholders
+!/data/raw/.gitkeep
+!/data/processed/.gitkeep
+!/artifacts/bills/.gitkeep
+!/artifacts/screenshots/.gitkeep
+!/artifacts/recording/.gitkeep
