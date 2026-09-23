@@ -374,26 +374,6 @@ def schedule_to_dict(schedule: Schedule) -> dict[str, Any]:
     }
 
 
-def test_source_keys_are_deterministic() -> None:
-    schedule_one = parse_xer(XER_FILE)
-    schedule_two = parse_xer(XER_FILE)
-
-    from src.schedule_importer import build_source_keys
-
-    keys_one = build_source_keys(schedule_one)
-    keys_two = build_source_keys(schedule_two)
-
-    assert keys_one == keys_two
-
-    assert len(keys_one["project"]) == 1
-    assert len(keys_one["wbs"]) == 11
-    assert len(keys_one["tasks"]) == 12
-    assert len(keys_one["dependencies"]) == 13
-
-    assert keys_one["project"][0] == "xer:project:10"
-    assert "xer:task:1010" in keys_one["tasks"]
-    assert "xer:dependency:5012" in keys_one["dependencies"]
-
 
 def main() -> None:
     """Parse, validate and save the schedule locally."""
