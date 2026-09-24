@@ -44,6 +44,19 @@ class ClickUpClient:
         response.raise_for_status()
         return response.json()
 
+    def delete(self, path: str, **kwargs: Any) -> Any:
+        response = self.session.delete(
+            f"{self.base_url}{path}",
+            timeout=30,
+            **kwargs,
+        )
+        response.raise_for_status()
+
+        if not response.content:
+            return None
+
+        return response.json()
+
     def put(self, path: str, **kwargs: Any) -> Any:
         response = self.session.put(
             f"{self.base_url}{path}",
@@ -72,8 +85,19 @@ class ClickUpClient:
     def get_list(self, list_id: str) -> Any:
         return self.get(f"/list/{list_id}")
 
-    def get_list_tasks(self, list_id: str) -> Any:
-        return self.get(f"/list/{list_id}/task")
+    def get_list_tasks(
+        self,
+        list_id: str,
+        subtasks: bool = False,
+    ) -> Any:
+        params = {
+            "subtasks": str(subtasks).lower(),
+        }
+
+        return self.get(
+            f"/list/{list_id}/task",
+            params=params,
+        )
 
     # ------------------------------------------------------------------
     # List management
@@ -195,5 +219,24 @@ class ClickUpClient:
             json=payload,
         )
 
+    def update_task_parent(
+        self,
+        task_id: str,
+        parent: str,
+    ) -> Any:
+        """Move an existing task under a ClickUp parent task."""
+
+        return self.put(
+            f"/task/{task_id}",
+            json={"parent": parent},
+        )
+
     def get_task(self, task_id: str) -> Any:
         return self.get(f"/task/{task_id}")
+
+    def delete_task(self, task_id: str) -> Any:
+        """Delete a ClickUp task by ID."""
+
+        return self.delete(
+            f"/task/{task_id}",
+        )
