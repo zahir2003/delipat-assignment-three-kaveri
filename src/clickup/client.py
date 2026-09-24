@@ -71,3 +71,37 @@ class ClickUpClient:
     def get_list_tasks(self, list_id: str) -> Any:
         """Return tasks currently in a ClickUp List."""
         return self.get(f"/list/{list_id}/task")
+
+    def create_space_list(
+        self,
+        space_id: str,
+        name: str,
+        content: str | None = None,
+    ) -> Any:
+        """Create a folderless List directly inside a Space."""
+        payload: dict[str, Any] = {"name": name}
+
+        if content:
+            payload["content"] = content
+
+        return self.post(
+            f"/space/{space_id}/list",
+            json=payload,
+        )
+
+    def update_list(
+        self,
+        list_id: str,
+        name: str | None = None,
+    ) -> Any:
+        """Update basic List properties."""
+        payload: dict[str, Any] = {}
+
+        if name is not None:
+            payload["name"] = name
+
+        return self.session.put(
+            f"{self.base_url}/list/{list_id}",
+            timeout=30,
+            json=payload,
+        ).json()
