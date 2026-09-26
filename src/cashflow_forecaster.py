@@ -20,6 +20,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+from src.clickup.client import ClickUpClient
+
 
 DATA_DIR = Path("data/raw")
 
@@ -31,6 +35,9 @@ FORECAST_MONTHS = (
 
 GST_RATE = Decimal("0.18")
 RETENTION_RATE = Decimal("0.05")
+
+RA_BILLING_LIST_ID = "1300410000043629"
+SOURCE_KEY = "cashflow:2026-10:2026-12"
 
 
 class CashflowDataError(ValueError):
@@ -636,6 +643,104 @@ def build_existing_cash_receipts() -> dict[str, Decimal]:
     }
 
 
+def build_clickup_description(
+    forecast_lines: list[ForecastLine],
+    cashflow: list[CashflowMonth],
+) -> str:
+    lines = [
+        f"source_key: {SOURCE_KEY}",
+        "",
+        "Kaveri Infrasystems - SCP2",
+        "Cash-flow Forecast",
+        "Forecast window: October-December 2026",
+        "",
+        "MONTHLY CASH INFLOW",
+    ]
+
+    for month in cashflow:
+        lines.append(
+            f"{month.month} | "
+            f"INR {month.amount_inr:,.2f}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "FORECAST LINES",
+        ]
+    )
+
+    for line in forecast_lines:
+        lines.append(
+            f"{line.boq_item} | "
+            f"remaining={line.remaining_qty} | "
+            f"finish={line.finish_month} | "
+            f"gross=INR {line.gross_value:,.2f} | "
+            f"payment={line.payment_date.isoformat()}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "CALCULATION BASIS",
+            "Forecast uses controlled project schedule, BOQ quantities, "
+            "cumulative billed quantities and contract payment terms.",
+            "GST @ 18% included in forecast receipts.",
+            "Retention @ 5% deducted from forecast receipts.",
+            "Retention release is outside the forecast.",
+            "No future mobilisation advance recovery is applied.",
+            "",
+            "Source: controlled project data only.",
+            "No external AI or external data source used.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def find_existing_cashflow_task(
+    client: ClickUpClient,
+) -> dict | None:
+    result = client.get_list_tasks(
+        RA_BILLING_LIST_ID,
+        subtasks=True,
+    )
+
+    for task in result.get("tasks", []):
+        description = task.get("description") or ""
+
+        if SOURCE_KEY in description:
+            return task
+
+    return None
+
+
+def create_or_update_cashflow_task(
+    client: ClickUpClient,
+    forecast_lines: list[ForecastLine],
+    cashflow: list[CashflowMonth],
+) -> dict:
+    description = build_clickup_description(
+        forecast_lines,
+        cashflow,
+    )
+
+    existing = find_existing_cashflow_task(client)
+
+    if existing:
+        return client.update_task(
+            existing["id"],
+            name="Cash-flow Forecast - Oct-Dec 2026",
+            description=description,
+        )
+
+    return client.create_task(
+        RA_BILLING_LIST_ID,
+            name="Cash-flow Forecast - Oct-Dec 2026",
+        description=description,
+        notify_all=False,
+    )
+
 def main() -> None:
     boq = load_boq(
         DATA_DIR / "boq.csv"
@@ -682,6 +787,24 @@ def main() -> None:
             f"INR {month.amount_inr:,.2f}"
         )
 
+
+    print()
+    print("Writing forecast to ClickUp...")
+
+    load_dotenv()
+
+    client = ClickUpClient()
+
+    task = create_or_update_cashflow_task(
+        client,
+        forecast_lines,
+        cashflow,
+    )
+
+    print("ClickUp cash-flow forecast ready.")
+    print(f"Task ID: {task.get('id')}")
+    print(f"Task name: {task.get('name')}")
+    print(f"List ID: {RA_BILLING_LIST_ID}")
 
 if __name__ == "__main__":
     main()
