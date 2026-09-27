@@ -1,0 +1,315 @@
+# Assignment Three — Dated Build Log
+
+**Project:** Kaveri Infrasystems — Smart Corridor Package 2 (SCP2)  
+**Assignment:** Delipat IT Assignment 3  
+**Build date:** 2026-09-27  
+**Build time:** 20:55:37 IST  
+**Git commit:** af032e4fbca34c9d45f43165715bf71a03517960  
+**Branch:** main  
+**Repository:** https://github.com/zahir2003/delipat-assignment-three-kaveri
+
+---
+
+## 1. Build Status
+
+The Assignment 3 implementation was completed and verified locally.
+
+Final automated test result:
+
+- **22/22 tests passed**
+- `git diff --check` clean
+- Working tree clean
+- Local `main` synchronized with `origin/main`
+
+---
+
+## 2. Four Required Programs
+
+### 2.1 Schedule Importer
+
+Implemented an idempotent XER schedule importer for the SCP2 Primavera P6 export.
+
+Verified schedule structure:
+
+- 11 WBS nodes
+- 12 activities/milestones
+- 2 milestones
+- 13 dependencies
+- Completed activity A1010: 2026-07-05
+- A4010 not started; scheduled for 2026-11-07
+
+Invalid WBS references are flagged and are not remapped.
+
+### 2.2 RA Bill Engine
+
+Implemented the RA-04 calculation engine using controlled project data and deterministic calculations.
+
+RA-04 results:
+
+| BOQ | Billable quantity | Gross |
+|---|---:|---:|
+| B01 | 0 LS | ₹0 |
+| B02 | 1,500 m | ₹1,725,000 |
+| B03 | 24 nos | ₹924,000 |
+| B04 | 4.9 km | ₹906,500 |
+| B05 | 700 m | ₹154,000 |
+| B06 | 12 nos | ₹174,000 |
+| B07 | 0 LS | ₹0 |
+
+Financial totals:
+
+- Gross: **₹3,883,500**
+- GST: **₹699,030**
+- Retention: **₹194,175**
+- Advance recovery: **₹324,650**
+- Net payable: **₹4,063,705**
+
+Exception:
+
+- B05: 250 m certified above contract quantity; recorded as variation.
+
+RA-04 PDF generated:
+
+`data/processed/Kaveri_SCP2_RA04_September_2026.pdf`
+
+### 2.3 Purchase Approval Router
+
+Implemented approval routing using:
+
+- Value-based approval limits
+- Approver availability
+- Automatic escalation when the assigned approver is unavailable
+- Anti-splitting aggregation
+
+September results:
+
+- 9 purchase requests routed
+- 2 escalated requests
+- 2 anti-splitting flags
+
+Examples:
+
+- PR-104 escalated to L2 because the assigned approver was unavailable.
+- PR-108 escalated to L2 because the assigned approver was unavailable.
+- PR-105 and PR-106 triggered anti-splitting aggregation.
+
+### 2.4 Cashflow Forecaster
+
+Implemented WBS/BOQ-based remaining-quantity and payment-date forecasting.
+
+Forecast:
+
+| Month | Cash inflow |
+|---|---:|
+| October 2026 | ₹2,385,500 |
+| November 2026 | ₹4,063,705 |
+| December 2026 | ₹6,107,085 |
+
+The forecast includes GST and deducts retention. Retention release is outside the forecast.
+
+---
+
+## 3. Traceability and Certification Controls
+
+The implementation maintains the required WBS → execution → BOQ relationship.
+
+Examples:
+
+- A3010 → EX-901 → B04
+- A3020 → EX-904 → B05
+- A3030 → EX-907 → B06
+
+Invalid WBS example:
+
+- A3050 → EX-917 → B06
+
+The invalid WBS record is flagged and is not remapped.
+
+Certification follows the required execution flow and does not permit certification without the required inspection certificate.
+
+Disputed quantities are excluded from billing.
+
+---
+
+## 4. Production and QC Controls
+
+B02:
+
+- PO-T-07: 900 m — PASS
+- PO-T-08: 600 m — PASS
+- PO-T-09: 300 m — FAIL due to zinc coating
+- RA-04 billable quantity: 1,500 m
+
+B03:
+
+- PO-P-04: 14 — PASS
+- PO-P-05: 12, including 2 weld-defect failures
+- RA-04 billable quantity: 24
+
+QC-failed production is excluded from billing.
+
+---
+
+## 5. Execution Exceptions
+
+B04:
+
+- Total logged: 8.98 km
+- Measurement: 5.2 km
+- Certified: 4.9 km
+- Disputed: 0.3 km
+- Unreconciled difference: 3.78 km
+
+The difference is flagged for operational review rather than inventing a reason.
+
+Capacity exception:
+
+- EX-908: 4,200 m in one day
+- Maximum configured OFC capacity: 800 m/day
+- Record is flagged.
+
+---
+
+## 6. Local Ollama Evaluation
+
+All 26 execution remarks were evaluated using local Ollama.
+
+Model:
+
+`llama3`
+
+Endpoint:
+
+`http://127.0.0.1:11434`
+
+Results:
+
+| Field | Correct | Total | Accuracy |
+|---|---:|---:|---:|
+| Delay category | 24 | 26 | 92.31% |
+| Delay hours | 26 | 26 | 100% |
+
+No external AI service was used for this calculation.
+
+The two delay-category mismatches were retained in the evaluation rather than being manually corrected.
+
+---
+
+## 7. Weekly Management Report
+
+The weekly management report combines deterministic project-control calculations with a local Ollama narrative.
+
+Verified values:
+
+- Activity progress: **71.08%**
+- Completed activities: **3/12**
+- Completed milestones: **1/2**
+- RA-04 gross: **₹3,883,500**
+- RA-04 net payable: **₹4,063,705**
+- Disputed value excluded: **₹84,500**
+- October cashflow: **₹2,385,500**
+- November cashflow: **₹4,063,705**
+- December cashflow: **₹6,107,085**
+
+The AI narrative is instructed not to calculate, alter numerical values, or invent facts. Numerical values remain generated by deterministic project-control calculations.
+
+---
+
+## 8. ClickUp Implementation
+
+ClickUp was used for the project workspace and controlled project records.
+
+Verified structures include:
+
+- Schedule & WBS list
+- RA Billing list
+- Imported WBS/activity/milestone records
+- RA-04 billing record
+- Cash-flow forecast record
+
+The RA-04 and cashflow records use deterministic source keys to support idempotent updates.
+
+---
+
+## 9. ClickUp AI Verification
+
+The required six project questions were tested against the ClickUp task-level AI/Brain context.
+
+Results:
+
+- WBS nodes and activity/milestone count: correct
+- Contract value: correct
+- RA-04 gross/GST/retention/advance recovery/net: correct
+- October/November/December cashflow: correct
+- B02 RA-04 billable quantity/rate: correct
+- B04 measured/certified/disputed quantities: correct
+
+Result:
+
+**6/6 correct = 100%**
+
+The global Brain indexing issue observed during testing did not affect the required task-level question results.
+
+---
+
+## 10. Feasibility Verdicts
+
+The F1–F13 feasibility assessment is documented separately in `FEASIBILITY.md`.
+
+Final counts:
+
+- NATIVE: 0
+- CONFIGURATION: 2
+- CUSTOM BUILD: 10
+- NOT POSSIBLE: 1
+
+F11 — keeping all company data on the company's private network — is classified as:
+
+**NOT POSSIBLE**
+
+The complete reasoning, workaround/limitation information, client-facing expectation statements, and evidence are documented in `FEASIBILITY.md`.
+
+---
+
+## 11. Data and AI Control
+
+All calculations use controlled assignment/project data.
+
+No contract values, rates, or client data were sent to external AI services.
+
+Local Ollama is used through the local endpoint:
+
+`127.0.0.1:11434`
+
+The management-report numerical values are generated by deterministic code. AI is used only for the narrative layer.
+
+---
+
+## 12. Final Verification
+
+Verified on 2026-09-27:
+
+- RA-04 engine runs successfully
+- RA-04 PDF generates successfully
+- Local Ollama evaluation artifacts present
+- Weekly management report runs successfully
+- Cashflow forecast generated
+- Purchase approval routing implemented
+- Schedule importer implemented
+- ClickUp records verified
+- **22/22 automated tests passed**
+- `git diff --check` clean
+- Git working tree clean
+- Local branch synchronized with GitHub
+
+---
+
+## 13. Repository
+
+GitHub repository:
+
+https://github.com/zahir2003/delipat-assignment-three-kaveri
+
+Final verified commit:
+
+`af032e4fbca34c9d45f43165715bf71a03517960`
