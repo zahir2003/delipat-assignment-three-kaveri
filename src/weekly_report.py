@@ -28,6 +28,7 @@ from src.ra_bill_engine import (
     load_production,
 )
 from src.schedule_importer import parse_xer, validate_schedule
+from src.ai.weekly_narrative import generate_narrative
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw"
@@ -288,7 +289,32 @@ def render_report(report: WeeklyReport) -> str:
 
 def main() -> None:
     report = build_report()
-    print(render_report(report))
+
+    controlled_report = render_report(report)
+
+    narrative = generate_narrative(controlled_report)
+
+    print(controlled_report)
+
+    print()
+    print("6. LOCAL OLLAMA MANAGEMENT NARRATIVE")
+    print("-" * 30)
+    print(narrative["summary"])
+
+    if narrative["attention_points"]:
+        print()
+        print("AI attention points:")
+        for point in narrative["attention_points"]:
+            print(f"- {point.lstrip('- ').strip()}")
+
+    print()
+    print("AI CONTROL NOTE")
+    print("-" * 30)
+    print(
+        "Narrative generated using local Ollama only. "
+        "Numerical values above are produced by deterministic "
+        "project-control calculations."
+    )
 
 
 if __name__ == "__main__":
