@@ -1,3 +1,8 @@
+"""
+This file synchronizes the calculated RA-04 bill with a ClickUp billing task.
+We need it so reviewers can track bill status in the same workspace as project actions.
+"""
+
 """Create and maintain RA billing records in ClickUp."""
 
 from decimal import Decimal
@@ -16,15 +21,24 @@ from src.ra_bill_engine import (
 )
 from src.schedule_importer import parse_xer
 
-
 LIST_ID = "1300410000043629"
 DATA_DIR = Path("data/raw")
 XER_FILE = DATA_DIR / "SCP2_schedule.xer"
 SOURCE_KEY = "ra:RA-04:2026-09"
 
 
+"""
+Formats a bill amount as rupees so ClickUp descriptions show readable financial figures.
+"""
+
+
 def money(value: Decimal) -> str:
     return f"INR{value:,.2f}"
+
+
+"""
+Builds the task description from bill details so reviewers can see the basis of the RA-04 amount.
+"""
 
 
 def build_description(bill) -> str:
@@ -46,8 +60,7 @@ def build_description(bill) -> str:
         f"Net payable: {money(totals.net_payable_inr)}",
         "",
         "ADVANCE",
-        f"Mobilisation advance @ 8%: "
-        f"{money(totals.mobilisation_advance_inr)}",
+        f"Mobilisation advance @ 8%: " f"{money(totals.mobilisation_advance_inr)}",
         f"Previous advance recovered: "
         f"{money(totals.previous_advance_recovered_inr)}",
         f"Outstanding before RA-04: "
@@ -82,19 +95,13 @@ def build_description(bill) -> str:
         )
 
         if line.period_disputed_qty:
-            lines.append(
-                f"  disputed={line.period_disputed_qty} {line.unit}"
-            )
+            lines.append(f"  disputed={line.period_disputed_qty} {line.unit}")
 
         if line.variation_qty:
-            lines.append(
-                f"  variation={line.variation_qty} {line.unit}"
-            )
+            lines.append(f"  variation={line.variation_qty} {line.unit}")
 
         if line.exclusion_reason:
-            lines.append(
-                f"  note={line.exclusion_reason}"
-            )
+            lines.append(f"  note={line.exclusion_reason}")
 
     if bill.exceptions:
         lines.extend(
@@ -108,20 +115,17 @@ def build_description(bill) -> str:
     return "\n".join(lines)
 
 
+"""
+Loads the current validated bill so ClickUp receives the billing engine's calculated values.
+"""
+
+
 def load_ra04_bill():
     boq = load_boq(DATA_DIR / "boq.csv")
-    measurements = load_measurements(
-        DATA_DIR / "measurement_sheet_RA04.csv"
-    )
-    production = load_production(
-        DATA_DIR / "production_orders_sep2026.csv"
-    )
-    cumulative = load_cumulative(
-        DATA_DIR / "cumulative_billed_to_RA03.csv"
-    )
-    bill_register = load_bill_register(
-        DATA_DIR / "bill_register.csv"
-    )
+    measurements = load_measurements(DATA_DIR / "measurement_sheet_RA04.csv")
+    production = load_production(DATA_DIR / "production_orders_sep2026.csv")
+    cumulative = load_cumulative(DATA_DIR / "cumulative_billed_to_RA03.csv")
+    bill_register = load_bill_register(DATA_DIR / "bill_register.csv")
     schedule = parse_xer(XER_FILE)
 
     return calculate_bill(
@@ -132,6 +136,11 @@ def load_ra04_bill():
         bill_register=bill_register,
         schedule=schedule,
     )
+
+
+"""
+Finds an existing RA-04 task so rerunning synchronization does not create duplicate bill records.
+"""
 
 
 def find_existing_task(client: ClickUpClient) -> dict | None:
@@ -147,6 +156,11 @@ def find_existing_task(client: ClickUpClient) -> dict | None:
             return task
 
     return None
+
+
+"""
+Creates or updates the RA-04 task so ClickUp stays aligned with the latest bill calculation.
+"""
 
 
 def create_or_update_ra04(client: ClickUpClient) -> dict:
@@ -169,6 +183,11 @@ def create_or_update_ra04(client: ClickUpClient) -> dict:
         description=description,
         notify_all=False,
     )
+
+
+"""
+Loads configuration and synchronizes RA-04 to ClickUp from the command line.
+"""
 
 
 def main() -> None:

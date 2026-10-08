@@ -1,3 +1,8 @@
+"""
+This file tests purchase routing against approval limits, leave rules, and anti-splitting policy.
+We need these checks to catch changes that could send a request to the wrong approver.
+"""
+
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -10,39 +15,43 @@ from src.approval_router import (
     route_requests,
 )
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
 
-def load_test_routes():
-    levels = load_approval_matrix(
-        DATA_DIR / "approval_matrix.csv"
-    )
+"""
+Builds the shared controlled test input so routing tests can use the same request set.
+"""
 
-    requests = load_purchase_requests(
-        DATA_DIR / "purchase_requests_sep2026.csv"
-    )
+
+def load_test_routes():
+    levels = load_approval_matrix(DATA_DIR / "approval_matrix.csv")
+
+    requests = load_purchase_requests(DATA_DIR / "purchase_requests_sep2026.csv")
 
     return route_requests(levels, requests)
 
 
+"""
+Checks the expected request count so the controlled input data remains complete.
+"""
+
+
 def test_purchase_request_count() -> None:
-    requests = load_purchase_requests(
-        DATA_DIR / "purchase_requests_sep2026.csv"
-    )
+    requests = load_purchase_requests(DATA_DIR / "purchase_requests_sep2026.csv")
 
     assert len(requests) == 9
+
+
+"""
+Checks that a request exactly at the first limit stays with the first-level approver.
+"""
 
 
 def test_exact_l1_limit_stays_at_l1() -> None:
     routes = load_test_routes()
 
-    pr102 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-102"
-    )
+    pr102 = next(route for route in routes if route.pr_no == "PR-102")
 
     assert pr102.value_inr == Decimal("50000")
     assert pr102.aggregate_value_inr == Decimal("50000")
@@ -51,14 +60,15 @@ def test_exact_l1_limit_stays_at_l1() -> None:
     assert pr102.escalated is False
 
 
+"""
+Checks that crossing the first limit escalates the request to the next approval level.
+"""
+
+
 def test_value_just_above_l1_moves_to_l2() -> None:
     routes = load_test_routes()
 
-    pr103 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-103"
-    )
+    pr103 = next(route for route in routes if route.pr_no == "PR-103")
 
     assert pr103.value_inr == Decimal("50001")
     assert pr103.required_level == "L2"
@@ -66,14 +76,15 @@ def test_value_just_above_l1_moves_to_l2() -> None:
     assert pr103.escalated is False
 
 
+"""
+Checks that an approver's leave causes the affected request to be escalated.
+"""
+
+
 def test_neha_leave_causes_pr104_escalation() -> None:
     routes = load_test_routes()
 
-    pr104 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-104"
-    )
+    pr104 = next(route for route in routes if route.pr_no == "PR-104")
 
     assert pr104.required_level == "L2"
     assert pr104.approver == "Vikram Rao"
@@ -81,20 +92,17 @@ def test_neha_leave_causes_pr104_escalation() -> None:
     assert pr104.escalated is True
 
 
+"""
+Checks that related purchases are combined so splitting cannot bypass an approval limit.
+"""
+
+
 def test_same_requester_vendor_date_is_aggregated() -> None:
     routes = load_test_routes()
 
-    pr105 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-105"
-    )
+    pr105 = next(route for route in routes if route.pr_no == "PR-105")
 
-    pr106 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-106"
-    )
+    pr106 = next(route for route in routes if route.pr_no == "PR-106")
 
     assert pr105.aggregate_value_inr == Decimal("90000")
     assert pr106.aggregate_value_inr == Decimal("90000")
@@ -109,14 +117,15 @@ def test_same_requester_vendor_date_is_aggregated() -> None:
     assert pr106.anti_splitting_flag is True
 
 
+"""
+Checks that a request above the third-level limit is routed to the fourth level.
+"""
+
+
 def test_above_l3_limit_routes_to_l4() -> None:
     routes = load_test_routes()
 
-    pr107 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-107"
-    )
+    pr107 = next(route for route in routes if route.pr_no == "PR-107")
 
     assert pr107.value_inr == Decimal("620000")
     assert pr107.required_level == "L4"
@@ -125,14 +134,15 @@ def test_above_l3_limit_routes_to_l4() -> None:
     assert pr107.escalated is False
 
 
+"""
+Checks that the final date of an approver's leave is still treated as unavailable.
+"""
+
+
 def test_leave_end_date_is_inclusive() -> None:
     routes = load_test_routes()
 
-    pr108 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-108"
-    )
+    pr108 = next(route for route in routes if route.pr_no == "PR-108")
 
     assert pr108.request_date == date(2026, 9, 26)
     assert pr108.required_level == "L2"
@@ -140,14 +150,15 @@ def test_leave_end_date_is_inclusive() -> None:
     assert pr108.escalated is True
 
 
+"""
+Checks that normal approval routing resumes after the approver's leave ends.
+"""
+
+
 def test_request_after_leave_returns_to_l2() -> None:
     routes = load_test_routes()
 
-    pr109 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-109"
-    )
+    pr109 = next(route for route in routes if route.pr_no == "PR-109")
 
     assert pr109.request_date == date(2026, 9, 27)
     assert pr109.required_level == "L2"
@@ -155,31 +166,29 @@ def test_request_after_leave_returns_to_l2() -> None:
     assert pr109.escalated is False
 
 
+"""
+Checks that a normal low-value request reaches its expected first-level approver.
+"""
+
+
 def test_normal_l1_request_routes_to_arjun() -> None:
     routes = load_test_routes()
 
-    pr101 = next(
-        route
-        for route in routes
-        if route.pr_no == "PR-101"
-    )
+    pr101 = next(route for route in routes if route.pr_no == "PR-101")
 
     assert pr101.required_level == "L1"
     assert pr101.approver == "Arjun Mehta"
     assert pr101.anti_splitting_flag is False
 
 
+"""
+Checks that every loaded request receives an approver so none are left unassigned.
+"""
+
+
 def test_all_requests_have_routes() -> None:
-    requests = load_purchase_requests(
-        DATA_DIR / "purchase_requests_sep2026.csv"
-    )
+    requests = load_purchase_requests(DATA_DIR / "purchase_requests_sep2026.csv")
 
     routes = load_test_routes()
 
-    assert {
-        route.pr_no
-        for route in routes
-    } == {
-        request.pr_no
-        for request in requests
-    }
+    assert {route.pr_no for route in routes} == {request.pr_no for request in requests}

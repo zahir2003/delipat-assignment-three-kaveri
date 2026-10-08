@@ -1,3 +1,8 @@
+"""
+This file checks ClickUp access and displays the workspace structure without changing it.
+We need it to verify account access and IDs before running scripts that create or update records.
+"""
+
 """Read-only ClickUp workspace structure discovery."""
 
 import os
@@ -5,6 +10,10 @@ import os
 from dotenv import load_dotenv
 
 from src.clickup.client import ClickUpClient
+
+"""
+Loads local settings and prints workspace, space, folder, and list details for a read-only check.
+"""
 
 
 def main() -> None:
@@ -39,10 +48,7 @@ def main() -> None:
         print(f"Folders found: {len(folders)}")
 
         for folder in folders:
-            print(
-                f"  - {folder.get('name')} "
-                f"(ID: {folder.get('id')})"
-            )
+            print(f"  - {folder.get('name')} " f"(ID: {folder.get('id')})")
 
         lists_result = client.get_space_lists(space_id)
         lists = lists_result.get("lists", [])
@@ -52,16 +58,11 @@ def main() -> None:
         for item in lists:
             list_id = item.get("id")
 
-            print(
-                f"  - {item.get('name')} "
-                f"(ID: {list_id})"
-            )
+            print(f"  - {item.get('name')} " f"(ID: {list_id})")
 
             details = client.get_list(list_id)
 
-            print(
-                f"    Status: {details.get('status', {}).get('status')}"
-            )
+            print(f"    Status: {details.get('status', {}).get('status')}")
 
             tasks_result = client.get_list_tasks(list_id)
             tasks = tasks_result.get("tasks", [])
@@ -72,10 +73,7 @@ def main() -> None:
             print(f"    Custom fields: {len(custom_fields)}")
 
             for field in custom_fields:
-                print(
-                    f"      - {field.get('name')} "
-                    f"(ID: {field.get('id')})"
-                )
+                print(f"      - {field.get('name')} " f"(ID: {field.get('id')})")
 
         print()
 

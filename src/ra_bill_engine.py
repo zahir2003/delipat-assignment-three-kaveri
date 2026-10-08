@@ -1,4 +1,6 @@
 """RA-04 bill engine for the Kaveri Infrasystems SCP2 contract.
+This file calculates the RA-04 bill from contract, measurement, production, and payment records.
+We need it to apply billing rules consistently and keep the calculated amounts traceable to source data.
 
 All commercial calculations are performed in code using Decimal arithmetic.
 No AI is involved in billing calculations.
@@ -20,7 +22,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from src.schedule_importer import parse_xer
-
 
 GST_RATE = Decimal("0.18")
 RETENTION_RATE = Decimal("0.05")
@@ -102,24 +103,30 @@ class Ra04Bill:
     exceptions: tuple[str, ...]
 
 
+"""
+Converts supported numeric inputs to Decimal so billing arithmetic remains precise.
+"""
+
+
 def decimal(value: str | int | float | Decimal) -> Decimal:
     """Convert a value to Decimal without silently accepting bad data."""
 
     try:
         return Decimal(str(value).strip())
     except (InvalidOperation, AttributeError):
-        raise BillingDataError(
-            f"Invalid numeric value: {value!r}"
-        ) from None
+        raise BillingDataError(f"Invalid numeric value: {value!r}") from None
+
+
+"""
+Reads a source CSV into named rows so contract and measurement data can be checked consistently.
+"""
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
     """Read a CSV file and return rows as dictionaries."""
 
     if not path.exists():
-        raise BillingDataError(
-            f"Required source file does not exist: {path}"
-        )
+        raise BillingDataError(f"Required source file does not exist: {path}")
 
     with path.open(
         "r",
@@ -127,6 +134,11 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         newline="",
     ) as handle:
         return list(csv.DictReader(handle))
+
+
+"""
+Loads BOQ items by identifier so measured work can be matched to contract descriptions, rates, and limits.
+"""
 
 
 def load_boq(path: Path) -> dict[str, BoqItem]:
@@ -139,9 +151,7 @@ def load_boq(path: Path) -> dict[str, BoqItem]:
         item = row["boq_item"]
 
         if item in result:
-            raise BillingDataError(
-                f"Duplicate BOQ item: {item}"
-            )
+            raise BillingDataError(f"Duplicate BOQ item: {item}")
 
         result[item] = BoqItem(
             boq_item=item,
@@ -159,6 +169,11 @@ def load_boq(path: Path) -> dict[str, BoqItem]:
     return result
 
 
+"""
+Loads RA-04 measurement rows so the bill uses the quantities recorded for this application.
+"""
+
+
 def load_measurements(
     path: Path,
 ) -> dict[str, Measurement]:
@@ -171,23 +186,18 @@ def load_measurements(
         item = row["boq_item"]
 
         if item in result:
-            raise BillingDataError(
-                f"Duplicate measurement row for {item}"
-            )
+            raise BillingDataError(f"Duplicate measurement row for {item}")
 
         measured = decimal(row["measured_this_period"])
         certified = decimal(row["certified_this_period"])
         disputed = decimal(row["disputed_this_period"])
 
         if measured < 0 or certified < 0 or disputed < 0:
-            raise BillingDataError(
-                f"Negative measurement quantity for {item}"
-            )
+            raise BillingDataError(f"Negative measurement quantity for {item}")
 
         if certified + disputed > measured:
             raise BillingDataError(
-                f"Certified + disputed exceeds measured quantity "
-                f"for {item}"
+                f"Certified + disputed exceeds measured quantity " f"for {item}"
             )
 
         result[item] = Measurement(
@@ -200,6 +210,11 @@ def load_measurements(
         )
 
     return result
+
+
+"""
+Loads production and quality records so failed or unverified work is not billed as completed.
+"""
 
 
 def load_production(
@@ -229,27 +244,19 @@ def load_production(
         standard_per_unit = decimal(row["std_steel_kg_per_unit"])
 
         if dispatched < 0 or produced < 0 or failed < 0:
-            raise BillingDataError(
-                f"Negative production quantity for {item}"
-            )
+            raise BillingDataError(f"Negative production quantity for {item}")
 
         qc_pass = produced - failed
 
         if qc_pass < 0:
-            raise BillingDataError(
-                f"QC failed quantity exceeds production for {item}"
-            )
+            raise BillingDataError(f"QC failed quantity exceeds production for {item}")
 
         standard_total = produced * standard_per_unit
 
         if standard_total == 0:
-            raise BillingDataError(
-                f"Cannot calculate steel variance for {item}"
-            )
+            raise BillingDataError(f"Cannot calculate steel variance for {item}")
 
-        variance_ratio = (
-            steel_issued - standard_total
-        ) / standard_total
+        variance_ratio = (steel_issued - standard_total) / standard_total
 
         flags = grouped[item]["steel_flags"]
 
@@ -277,6 +284,11 @@ def load_production(
     return result
 
 
+"""
+Loads previously billed quantities so the current application stays within cumulative contract limits.
+"""
+
+
 def load_cumulative(
     path: Path,
 ) -> dict[str, Decimal]:
@@ -289,20 +301,21 @@ def load_cumulative(
         item = row["boq_item"]
 
         if item in result:
-            raise BillingDataError(
-                f"Duplicate cumulative row for {item}"
-            )
+            raise BillingDataError(f"Duplicate cumulative row for {item}")
 
         quantity = decimal(row["cumulative_qty_billed"])
 
         if quantity < 0:
-            raise BillingDataError(
-                f"Negative cumulative billed quantity for {item}"
-            )
+            raise BillingDataError(f"Negative cumulative billed quantity for {item}")
 
         result[item] = quantity
 
     return result
+
+
+"""
+Loads previous bill records so earlier applications and deductions are included in the current calculation.
+"""
 
 
 def load_bill_register(
@@ -313,11 +326,14 @@ def load_bill_register(
     rows = read_csv(path)
 
     if not rows:
-        raise BillingDataError(
-            "Bill register is empty."
-        )
+        raise BillingDataError("Bill register is empty.")
 
     return rows
+
+
+"""
+Totals advance already recovered so the current bill deducts only the remaining balance.
+"""
 
 
 def previous_advance_recovered(
@@ -333,13 +349,16 @@ def previous_advance_recovered(
         gross = decimal(row["gross_value_inr"])
 
         if gross < 0:
-            raise BillingDataError(
-                f"Negative gross value in {row['bill_no']}"
-            )
+            raise BillingDataError(f"Negative gross value in {row['bill_no']}")
 
         total += gross * MOBILISATION_RECOVERY_RATE
 
     return total
+
+
+"""
+Totals BOQ item values so contract-based percentages use the approved contract amount.
+"""
 
 
 def contract_value(
@@ -348,12 +367,14 @@ def contract_value(
     """Calculate total contract value from BOQ quantities and rates."""
 
     return sum(
-        (
-            item.contract_qty * item.rate_inr
-            for item in boq.values()
-        ),
+        (item.contract_qty * item.rate_inr for item in boq.values()),
         Decimal("0"),
     )
+
+
+"""
+Checks milestone evidence and status so milestone work is billed only after its conditions are met.
+"""
 
 
 def validate_milestones(
@@ -380,9 +401,7 @@ def validate_milestones(
             continue
 
         activity_codes = [
-            code.strip()
-            for code in item.wbs_activity.split("|")
-            if code.strip()
+            code.strip() for code in item.wbs_activity.split("|") if code.strip()
         ]
 
         completed_in_month = False
@@ -400,12 +419,15 @@ def validate_milestones(
                 completed_in_month = True
 
         result[item.boq_item] = (
-            item.contract_qty
-            if completed_in_month
-            else Decimal("0")
+            item.contract_qty if completed_in_month else Decimal("0")
         )
 
     return result
+
+
+"""
+Calculates billable quantities, tax, retention, advance recovery, and net payable for RA-04.
+"""
 
 
 def calculate_bill(
@@ -421,8 +443,7 @@ def calculate_bill(
 
     if work_month != REPORTING_MONTH:
         raise BillingDataError(
-            f"This implementation is for RA-04 September 2026, "
-            f"not {work_month}."
+            f"This implementation is for RA-04 September 2026, " f"not {work_month}."
         )
 
     exceptions: list[str] = []
@@ -459,9 +480,7 @@ def calculate_bill(
         if item.billing_basis == "PROGRESS":
             if measurement is None:
                 period_billable = Decimal("0")
-                exclusion_reason = (
-                    "No September measurement/certification row."
-                )
+                exclusion_reason = "No September measurement/certification row."
             else:
                 period_certified = measurement.certified
                 period_disputed = measurement.disputed
@@ -472,9 +491,7 @@ def calculate_bill(
                         "excluded from billing."
                     )
 
-                remaining_cap = (
-                    item.contract_qty - previous
-                )
+                remaining_cap = item.contract_qty - previous
 
                 period_billable = min(
                     period_certified,
@@ -496,9 +513,7 @@ def calculate_bill(
         elif item.billing_basis == "DELIVERY_QC":
             if production_summary is None:
                 period_billable = Decimal("0")
-                exclusion_reason = (
-                    "No September production/QC data."
-                )
+                exclusion_reason = "No September production/QC data."
             else:
                 period_billable = production_summary.qc_pass_qty
 
@@ -508,14 +523,10 @@ def calculate_bill(
                         f"{item.unit} failed QC; excluded."
                     )
 
-                remaining_cap = (
-                    item.contract_qty - previous
-                )
+                remaining_cap = item.contract_qty - previous
 
                 if period_billable > remaining_cap:
-                    variation = (
-                        period_billable - remaining_cap
-                    )
+                    variation = period_billable - remaining_cap
                     period_billable = remaining_cap
 
                     exceptions.append(
@@ -532,24 +543,18 @@ def calculate_bill(
 
             if period_billable == 0:
                 exclusion_reason = (
-                    "Milestone not completed in September 2026 "
-                    "or already billed."
+                    "Milestone not completed in September 2026 " "or already billed."
                 )
 
         else:
             raise BillingDataError(
-                f"Unsupported billing basis for {item_code}: "
-                f"{item.billing_basis}"
+                f"Unsupported billing basis for {item_code}: " f"{item.billing_basis}"
             )
 
         if period_billable < 0:
-            raise BillingDataError(
-                f"Negative billable quantity for {item_code}"
-            )
+            raise BillingDataError(f"Negative billable quantity for {item_code}")
 
-        gross = (
-            period_billable * item.rate_inr
-        )
+        gross = period_billable * item.rate_inr
 
         lines.append(
             BillLine(
@@ -570,9 +575,7 @@ def calculate_bill(
 
     contract_total = contract_value(boq)
 
-    mobilisation_advance = (
-        contract_total * MOBILISATION_RATE
-    )
+    mobilisation_advance = contract_total * MOBILISATION_RATE
 
     previous_recovered = previous_advance_recovered(
         bill_register,
@@ -584,31 +587,21 @@ def calculate_bill(
     )
 
     gross_total = sum(
-        (
-            line.gross_value_inr
-            for line in lines
-        ),
+        (line.gross_value_inr for line in lines),
         Decimal("0"),
     )
 
     gst = gross_total * GST_RATE
     retention = gross_total * RETENTION_RATE
 
-    proposed_recovery = (
-        gross_total * MOBILISATION_RECOVERY_RATE
-    )
+    proposed_recovery = gross_total * MOBILISATION_RECOVERY_RATE
 
     advance_recovery = min(
         proposed_recovery,
         outstanding_before,
     )
 
-    net_payable = (
-        gross_total
-        + gst
-        - retention
-        - advance_recovery
-    )
+    net_payable = gross_total + gst - retention - advance_recovery
 
     totals = BillTotals(
         gross_value_inr=gross_total,
@@ -631,35 +624,28 @@ def calculate_bill(
     )
 
 
+"""
+Loads the billing inputs, calculates RA-04, and prints the bill for review.
+"""
+
+
 def main() -> None:
     """Calculate and print the RA-04 bill."""
 
     project_root = Path(__file__).resolve().parents[1]
     data_dir = project_root / "data" / "raw"
 
-    boq = load_boq(
-        data_dir / "boq.csv"
-    )
+    boq = load_boq(data_dir / "boq.csv")
 
-    measurements = load_measurements(
-        data_dir / "measurement_sheet_RA04.csv"
-    )
+    measurements = load_measurements(data_dir / "measurement_sheet_RA04.csv")
 
-    production = load_production(
-        data_dir / "production_orders_sep2026.csv"
-    )
+    production = load_production(data_dir / "production_orders_sep2026.csv")
 
-    cumulative = load_cumulative(
-        data_dir / "cumulative_billed_to_RA03.csv"
-    )
+    cumulative = load_cumulative(data_dir / "cumulative_billed_to_RA03.csv")
 
-    bill_register = load_bill_register(
-        data_dir / "bill_register.csv"
-    )
+    bill_register = load_bill_register(data_dir / "bill_register.csv")
 
-    schedule = parse_xer(
-        data_dir / "SCP2_schedule.xer"
-    )
+    schedule = parse_xer(data_dir / "SCP2_schedule.xer")
 
     bill = calculate_bill(
         boq=boq,
@@ -685,18 +671,9 @@ def main() -> None:
     print()
     print(f"Gross: ₹{bill.totals.gross_value_inr:,.2f}")
     print(f"GST: ₹{bill.totals.gst_inr:,.2f}")
-    print(
-        f"Retention: "
-        f"₹{bill.totals.retention_inr:,.2f}"
-    )
-    print(
-        f"Advance recovery: "
-        f"₹{bill.totals.advance_recovery_inr:,.2f}"
-    )
-    print(
-        f"Net payable: "
-        f"₹{bill.totals.net_payable_inr:,.2f}"
-    )
+    print(f"Retention: " f"₹{bill.totals.retention_inr:,.2f}")
+    print(f"Advance recovery: " f"₹{bill.totals.advance_recovery_inr:,.2f}")
+    print(f"Net payable: " f"₹{bill.totals.net_payable_inr:,.2f}")
 
     if bill.exceptions:
         print()

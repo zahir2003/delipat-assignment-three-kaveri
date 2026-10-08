@@ -1,3 +1,8 @@
+"""
+This file combines schedule progress, billing, approvals, and cash flow into a weekly management report.
+We need it to give project leads one consistent view of performance and current exceptions.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -57,10 +62,20 @@ class WeeklyReport:
     key_exceptions: tuple[str, ...]
 
 
+"""
+Loads and validates the project schedule so the report uses checked activity data.
+"""
+
+
 def load_schedule_report():
     schedule = parse_xer(RAW / "SCP2_schedule.xer")
     errors = validate_schedule(schedule)
     return schedule, errors
+
+
+"""
+Calculates progress and task counts so managers can see schedule status at a glance.
+"""
 
 
 def calculate_progress(schedule) -> tuple[float, int, int, int, int]:
@@ -100,6 +115,11 @@ def calculate_progress(schedule) -> tuple[float, int, int, int, int]:
     )
 
 
+"""
+Calculates the current RA-04 bill so the report reflects the project's billing position.
+"""
+
+
 def calculate_ra04():
     boq = load_boq(RAW / "boq.csv")
     measurements = load_measurements(RAW / "measurement_sheet_RA04.csv")
@@ -120,11 +140,21 @@ def calculate_ra04():
     )
 
 
+"""
+Routes current purchase requests so the report can show their approval responsibilities.
+"""
+
+
 def calculate_approvals():
     levels = load_approval_matrix(RAW / "approval_matrix.csv")
     requests = load_purchase_requests(RAW / "purchase_requests_sep2026.csv")
 
     return route_requests(levels, requests)
+
+
+"""
+Builds the cash-flow outlook so expected receipts and their timing appear in the report.
+"""
 
 
 def calculate_cashflow():
@@ -149,8 +179,18 @@ def calculate_cashflow():
     )
 
 
+"""
+Formats report amounts as rupees so financial values are easy to compare.
+"""
+
+
 def money(value: Decimal) -> str:
     return f"INR {value:,.2f}"
+
+
+"""
+Combines schedule, billing, approval, and cash-flow results into one report object.
+"""
 
 
 def build_report() -> WeeklyReport:
@@ -223,6 +263,11 @@ def build_report() -> WeeklyReport:
     )
 
 
+"""
+Turns report data into readable text so it can be reviewed or passed to the narrative generator.
+"""
+
+
 def render_report(report: WeeklyReport) -> str:
     lines = [
         "KAVERI INFRASYSTEMS — WEEKLY MANAGEMENT REPORT",
@@ -285,6 +330,11 @@ def render_report(report: WeeklyReport) -> str:
     )
 
     return "\n".join(lines)
+
+
+"""
+Builds and prints the weekly report so project leads can review the current summary.
+"""
 
 
 def main() -> None:

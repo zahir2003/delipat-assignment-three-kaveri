@@ -1,4 +1,6 @@
 """Purchase approval router for Kaveri Infrasystems.
+This file routes purchase requests using the project's approval limits, leave rules, and anti-splitting policy.
+We need it so each request reaches the correct available approver and can be reviewed consistently.
 
 The router applies the approval matrix, inclusive leave dates,
 and anti-splitting aggregation rules from the project policy.
@@ -11,7 +13,6 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-
 
 DATA_DIR = Path("data/raw")
 REPORTING_MONTH = "2026-09"
@@ -57,13 +58,21 @@ class ApprovalRoute:
     anti_splitting_flag: bool
 
 
+"""
+Converts an input amount to Decimal so approval thresholds are compared without rounding errors.
+"""
+
+
 def decimal(value: str) -> Decimal:
     try:
         return Decimal(value.strip())
     except Exception as exc:
-        raise ApprovalDataError(
-            f"Invalid monetary value: {value!r}"
-        ) from exc
+        raise ApprovalDataError(f"Invalid monetary value: {value!r}") from exc
+
+
+"""
+Parses a source date so request dates can be compared with approver leave periods.
+"""
 
 
 def parse_date(value: str) -> date | None:
@@ -75,16 +84,17 @@ def parse_date(value: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise ApprovalDataError(
-            f"Invalid date: {value!r}"
-        ) from exc
+        raise ApprovalDataError(f"Invalid date: {value!r}") from exc
+
+
+"""
+Reads a CSV into named fields so policy and request records can be processed reliably.
+"""
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
     if not path.exists():
-        raise ApprovalDataError(
-            f"Input file does not exist: {path}"
-        )
+        raise ApprovalDataError(f"Input file does not exist: {path}")
 
     with path.open(
         "r",
@@ -92,6 +102,11 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         newline="",
     ) as handle:
         return list(csv.DictReader(handle))
+
+
+"""
+Loads approval levels and limits so request routing follows the approved authority matrix.
+"""
 
 
 def load_approval_matrix(
@@ -109,16 +124,13 @@ def load_approval_matrix(
     }
 
     if not rows:
-        raise ApprovalDataError(
-            "Approval matrix is empty."
-        )
+        raise ApprovalDataError("Approval matrix is empty.")
 
     missing = required - set(rows[0].keys())
 
     if missing:
         raise ApprovalDataError(
-            f"Approval matrix missing columns: "
-            f"{sorted(missing)}"
+            f"Approval matrix missing columns: " f"{sorted(missing)}"
         )
 
     levels: list[ApprovalLevel] = []
@@ -126,24 +138,13 @@ def load_approval_matrix(
     for row in rows:
         limit_raw = row["approval_limit_inr"].strip()
 
-        limit = (
-            None
-            if not limit_raw
-            else decimal(limit_raw)
-        )
+        limit = None if not limit_raw else decimal(limit_raw)
 
         leave_from = parse_date(row["leave_from"])
         leave_to = parse_date(row["leave_to"])
 
-        if (
-            leave_from is not None
-            and leave_to is not None
-            and leave_from > leave_to
-        ):
-            raise ApprovalDataError(
-                f"Invalid leave range for "
-                f"{row['approver']}"
-            )
+        if leave_from is not None and leave_to is not None and leave_from > leave_to:
+            raise ApprovalDataError(f"Invalid leave range for " f"{row['approver']}")
 
         levels.append(
             ApprovalLevel(
@@ -157,6 +158,11 @@ def load_approval_matrix(
         )
 
     return levels
+
+
+"""
+Loads purchase requests from the register so they can be checked and assigned to approvers.
+"""
 
 
 def load_purchase_requests(
@@ -174,16 +180,13 @@ def load_purchase_requests(
     }
 
     if not rows:
-        raise ApprovalDataError(
-            "Purchase request file is empty."
-        )
+        raise ApprovalDataError("Purchase request file is empty.")
 
     missing = required - set(rows[0].keys())
 
     if missing:
         raise ApprovalDataError(
-            f"Purchase request file missing columns: "
-            f"{sorted(missing)}"
+            f"Purchase request file missing columns: " f"{sorted(missing)}"
         )
 
     requests: list[PurchaseRequest] = []
@@ -192,16 +195,13 @@ def load_purchase_requests(
         request_date = parse_date(row["request_date"])
 
         if request_date is None:
-            raise ApprovalDataError(
-                f"Missing request date for {row['pr_no']}"
-            )
+            raise ApprovalDataError(f"Missing request date for {row['pr_no']}")
 
         value = decimal(row["value_inr"])
 
         if value <= 0:
             raise ApprovalDataError(
-                f"Purchase request {row['pr_no']} "
-                f"has non-positive value."
+                f"Purchase request {row['pr_no']} " f"has non-positive value."
             )
 
         requests.append(
@@ -218,6 +218,11 @@ def load_purchase_requests(
     return requests
 
 
+"""
+Checks whether an approver is on leave on the request date so unavailable people are not assigned work.
+"""
+
+
 def is_on_leave(
     level: ApprovalLevel,
     request_date: date,
@@ -225,11 +230,12 @@ def is_on_leave(
     if level.leave_from is None or level.leave_to is None:
         return False
 
-    return (
-        level.leave_from
-        <= request_date
-        <= level.leave_to
-    )
+    return level.leave_from <= request_date <= level.leave_to
+
+
+"""
+Creates a key for related purchases so requests that may be split can be grouped together.
+"""
 
 
 def aggregate_key(request: PurchaseRequest) -> str:
@@ -240,6 +246,11 @@ def aggregate_key(request: PurchaseRequest) -> str:
     )
 
 
+"""
+Groups related requests and totals their values so approval limits use the combined purchase amount.
+"""
+
+
 def build_aggregates(
     requests: list[PurchaseRequest],
 ) -> dict[str, Decimal]:
@@ -248,12 +259,14 @@ def build_aggregates(
     for request in requests:
         key = aggregate_key(request)
 
-        totals[key] = (
-            totals.get(key, Decimal("0"))
-            + request.value_inr
-        )
+        totals[key] = totals.get(key, Decimal("0")) + request.value_inr
 
     return totals
+
+
+"""
+Finds the lowest approval level that covers a request so the correct authority is selected.
+"""
 
 
 def find_required_level(
@@ -266,9 +279,12 @@ def find_required_level(
         if limit is None or amount <= limit:
             return index
 
-    raise ApprovalDataError(
-        f"No approval level covers amount {amount}."
-    )
+    raise ApprovalDataError(f"No approval level covers amount {amount}.")
+
+
+"""
+Applies aggregation, approval limits, and leave coverage so every request receives the right approver.
+"""
 
 
 def route_requests(
@@ -276,9 +292,7 @@ def route_requests(
     requests: list[PurchaseRequest],
 ) -> list[ApprovalRoute]:
     if not levels:
-        raise ApprovalDataError(
-            "Approval matrix contains no levels."
-        )
+        raise ApprovalDataError("Approval matrix contains no levels.")
 
     aggregates = build_aggregates(requests)
 
@@ -307,15 +321,11 @@ def route_requests(
             selected_index += 1
 
         if selected_index >= len(levels):
-            raise ApprovalDataError(
-                f"No available approver for {request.pr_no}."
-            )
+            raise ApprovalDataError(f"No available approver for {request.pr_no}.")
 
         selected_level = levels[selected_index]
 
-        anti_splitting_flag = (
-            aggregate_value > request.value_inr
-        )
+        anti_splitting_flag = aggregate_value > request.value_inr
 
         routes.append(
             ApprovalRoute(
@@ -325,14 +335,10 @@ def route_requests(
                 request_date=request.request_date,
                 value_inr=request.value_inr,
                 aggregate_value_inr=aggregate_value,
-                required_level=levels[
-                    required_index
-                ].level,
+                required_level=levels[required_index].level,
                 approver=selected_level.approver,
                 role=selected_level.role,
-                escalated=(
-                    selected_index > required_index
-                ),
+                escalated=(selected_index > required_index),
                 aggregation_key=key,
                 anti_splitting_flag=anti_splitting_flag,
             )
@@ -341,18 +347,24 @@ def route_requests(
     return routes
 
 
+"""
+Formats an approval amount as readable currency so reviewers can understand it quickly.
+"""
+
+
 def format_money(value: Decimal) -> str:
     return f"₹{value:,.2f}"
 
 
-def main() -> None:
-    levels = load_approval_matrix(
-        DATA_DIR / "approval_matrix.csv"
-    )
+"""
+Loads the approval inputs, routes requests, and prints the results for project review.
+"""
 
-    requests = load_purchase_requests(
-        DATA_DIR / "purchase_requests_sep2026.csv"
-    )
+
+def main() -> None:
+    levels = load_approval_matrix(DATA_DIR / "approval_matrix.csv")
+
+    requests = load_purchase_requests(DATA_DIR / "purchase_requests_sep2026.csv")
 
     routes = route_requests(
         levels,
@@ -372,11 +384,7 @@ def main() -> None:
         if route.anti_splitting_flag:
             flags.append("AGGREGATED")
 
-        flag_text = (
-            f" [{' | '.join(flags)}]"
-            if flags
-            else ""
-        )
+        flag_text = f" [{' | '.join(flags)}]" if flags else ""
 
         print(
             f"{route.pr_no} | "

@@ -1,3 +1,8 @@
+"""
+This file creates a short weekly management narrative from the prepared project report.
+We need it to make key updates easier to read while keeping narrative generation local.
+"""
+
 from __future__ import annotations
 
 import json
@@ -21,6 +26,11 @@ OLLAMA_MODEL = os.getenv(
     "OLLAMA_MODEL",
     "llama3",
 )
+
+
+"""
+Builds constrained instructions so the local model summarizes the report without inventing unsupported facts.
+"""
 
 
 def build_prompt(report_text: str) -> str:
@@ -59,6 +69,11 @@ Return exactly this structure:
 Controlled weekly report:
 {report_text}
 """.strip()
+
+
+"""
+Requests a narrative from local Ollama and returns structured text for the weekly-report workflow.
+"""
 
 
 def generate_narrative(report_text: str) -> dict[str, Any]:
@@ -113,6 +128,11 @@ def generate_narrative(report_text: str) -> dict[str, Any]:
         "summary": summary.strip(),
         "attention_points": cleaned_points,
     }
+
+
+"""
+Runs a local smoke test so Ollama connectivity and narrative generation can be checked directly.
+"""
 
 
 def main() -> None:

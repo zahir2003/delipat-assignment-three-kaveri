@@ -8,6 +8,7 @@ This module:
 5. Calculates field-level accuracy against the independent hand labels.
 
 No execution-log data is sent to an external AI service.
+This file is needed to classify execution remarks locally and compare predictions with human labels.
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import requests
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -44,10 +44,20 @@ ALLOWED_CATEGORIES = {
 }
 
 
+"""
+Loads a CSV into named rows so remarks and labels can be accessed by their column names.
+"""
+
+
 def load_csv(path: Path) -> list[dict[str, str]]:
     """Load a CSV file into a list of dictionaries."""
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         return list(csv.DictReader(file))
+
+
+"""
+Builds the classification instructions for one remark so the local model follows the project's evidence rules.
+"""
 
 
 def build_prompt(remark: str) -> str:
@@ -81,6 +91,11 @@ Remark:
 """.strip()
 
 
+"""
+Sends one remark to local Ollama so project text is not sent to an external AI service.
+"""
+
+
 def call_ollama(remark: str) -> dict[str, Any]:
     """Send one remark to the local Ollama HTTP API."""
     payload = {
@@ -112,9 +127,7 @@ def call_ollama(remark: str) -> dict[str, Any]:
     hours = result.get("delay_hours", "not stated")
 
     if category not in ALLOWED_CATEGORIES:
-        raise ValueError(
-            f"Invalid delay_category from Ollama: {category!r}"
-        )
+        raise ValueError(f"Invalid delay_category from Ollama: {category!r}")
 
     if isinstance(hours, str):
         hours = hours.strip().lower()
@@ -123,9 +136,7 @@ def call_ollama(remark: str) -> dict[str, Any]:
             try:
                 hours = float(hours)
             except ValueError as exc:
-                raise ValueError(
-                    f"Invalid delay_hours from Ollama: {hours!r}"
-                ) from exc
+                raise ValueError(f"Invalid delay_hours from Ollama: {hours!r}") from exc
 
     elif isinstance(hours, (int, float)):
         hours = float(hours)
@@ -139,6 +150,11 @@ def call_ollama(remark: str) -> dict[str, Any]:
         "delay_category": category,
         "delay_hours": hours,
     }
+
+
+"""
+Normalizes the model's hours response so numeric durations and unstated values can be compared consistently.
+"""
 
 
 def normalize_hours(value: Any) -> str:
@@ -162,6 +178,11 @@ def normalize_hours(value: Any) -> str:
     return str(number)
 
 
+"""
+Compares predictions with hand-labeled examples so classification accuracy can be measured by field.
+"""
+
+
 def calculate_accuracy(
     predictions: list[dict[str, str]],
     ground_truth: list[dict[str, str]],
@@ -177,9 +198,7 @@ def calculate_accuracy(
         log_id = prediction["log_id"]
 
         if log_id not in truth_by_id:
-            raise ValueError(
-                f"Prediction {log_id} has no matching ground-truth label"
-            )
+            raise ValueError(f"Prediction {log_id} has no matching ground-truth label")
 
         truth = truth_by_id[log_id]
 
@@ -217,6 +236,11 @@ def calculate_accuracy(
     }
 
 
+"""
+Runs local classification, saves predictions, and writes the accuracy summary for review.
+"""
+
+
 def main() -> None:
     """Run local extraction and independent accuracy evaluation."""
     if not EXECUTION_LOG.exists():
@@ -229,14 +253,10 @@ def main() -> None:
     ground_truth = load_csv(GROUND_TRUTH)
 
     if len(execution_rows) != 26:
-        raise ValueError(
-            f"Expected 26 execution remarks, found {len(execution_rows)}"
-        )
+        raise ValueError(f"Expected 26 execution remarks, found {len(execution_rows)}")
 
     if len(ground_truth) != 26:
-        raise ValueError(
-            f"Expected 26 ground-truth labels, found {len(ground_truth)}"
-        )
+        raise ValueError(f"Expected 26 ground-truth labels, found {len(ground_truth)}")
 
     print(f"Using local Ollama: {OLLAMA_URL}")
     print(f"Model: {OLLAMA_MODEL}")

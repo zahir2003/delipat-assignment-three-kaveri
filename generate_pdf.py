@@ -1,3 +1,8 @@
+"""
+This file assembles project results and evidence into the final assignment PDF.
+We need it to turn the separate reports, tables, and screenshots into one document for review and submission.
+"""
+
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -128,6 +133,11 @@ SCREENSHOT_FILES = [
 # ============================================================
 # FONT SETUP
 # ============================================================
+
+
+"""
+Finds an installed font from preferred choices so the PDF stays readable across different computers.
+"""
 
 
 def find_font(names):
@@ -297,8 +307,18 @@ styles.add(
 # ============================================================
 
 
+"""
+Escapes special HTML characters so report text is displayed literally instead of being treated as markup.
+"""
+
+
 def escape_text(value):
     return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+"""
+Creates a consistently styled paragraph so report text follows the document's typography.
+"""
 
 
 def paragraph(
@@ -314,6 +334,11 @@ def paragraph(
     )
 
 
+"""
+Creates a paragraph that supports ReportLab markup so selected text can receive emphasis or color.
+"""
+
+
 def rich_paragraph(
     text,
     style="BodyCustom",
@@ -324,8 +349,18 @@ def rich_paragraph(
     )
 
 
+"""
+Formats an amount as Indian rupees so financial figures are easy to scan.
+"""
+
+
 def money(value):
     return f"INR {value:,.2f}"
+
+
+"""
+Creates a styled bullet item so report lists remain consistent and readable.
+"""
 
 
 def bullet(text):
@@ -338,6 +373,11 @@ def bullet(text):
 # ============================================================
 # INPUT VALIDATION
 # ============================================================
+
+
+"""
+Checks required source files and evidence before PDF generation so missing inputs are found early.
+"""
 
 
 def validate_inputs():
@@ -380,6 +420,11 @@ def validate_inputs():
 # ============================================================
 # SECTION HEADER
 # ============================================================
+
+
+"""
+Builds a numbered section heading so readers can navigate the report more easily.
+"""
 
 
 def section_header(
@@ -485,6 +530,11 @@ def section_header(
 # ============================================================
 # TABLE
 # ============================================================
+
+
+"""
+Builds a formatted table from report data so related values can be compared clearly.
+"""
 
 
 def make_table(
@@ -617,6 +667,11 @@ def make_table(
 # ============================================================
 
 
+"""
+Builds a highlighted information box so important notes and exceptions stand out.
+"""
+
+
 def info_box(
     title,
     text,
@@ -701,6 +756,11 @@ LANDSCAPE = landscape(A4)
 # ============================================================
 
 
+"""
+Draws common page details for portrait pages so headers, footers, and numbering stay consistent.
+"""
+
+
 def portrait_page(
     canvas,
     doc,
@@ -759,6 +819,11 @@ def portrait_page(
 # ============================================================
 # LANDSCAPE PAGE HEADER / FOOTER
 # ============================================================
+
+
+"""
+Draws common page details for landscape pages so wide tables keep the same document framing.
+"""
 
 
 def landscape_page(
@@ -820,11 +885,21 @@ def landscape_page(
 # ============================================================
 
 
+"""
+Reads image dimensions so evidence can be fitted to the page without changing its proportions.
+"""
+
+
 def image_size(path):
 
     reader = ImageReader(str(path))
 
     return reader.getSize()
+
+
+"""
+Chooses a page orientation from an image's shape so each screenshot has suitable space.
+"""
 
 
 def evidence_orientation(path):
@@ -842,6 +917,11 @@ def evidence_orientation(path):
         return "portrait"
 
     return "landscape"
+
+
+"""
+Creates a fitted image element so evidence remains legible and keeps its original proportions.
+"""
 
 
 def evidence_image(
@@ -881,6 +961,11 @@ def evidence_image(
 # ============================================================
 # EVIDENCE PAGE
 # ============================================================
+
+
+"""
+Adds a numbered evidence item and caption so screenshots can be identified and referenced.
+"""
 
 
 def add_evidence(
@@ -956,6 +1041,11 @@ def add_evidence(
 # ============================================================
 # BUILD PDF STORY
 # ============================================================
+
+
+"""
+Assembles report sections, tables, and evidence in order so the PDF presents a complete project narrative.
+"""
 
 
 def build_story():
@@ -2243,6 +2333,11 @@ def build_story():
 # ============================================================
 
 
+"""
+Configures the PDF document and page templates so the assembled report can be rendered consistently.
+"""
+
+
 def build_document():
 
     document = BaseDocTemplate(
@@ -2328,6 +2423,11 @@ def build_document():
 # ============================================================
 # GENERATE PDF
 # ============================================================
+
+
+"""
+Checks inputs and generates the final PDF through one clear command-line entry point.
+"""
 
 
 def main():

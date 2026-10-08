@@ -1,12 +1,21 @@
+"""
+This file prepares the ClickUp list used for RA billing records.
+We need it to create the billing workspace structure once and reuse it on later runs.
+"""
+
 """Create the Kaveri RA Billing ClickUp List idempotently."""
 
 from dotenv import load_dotenv
 
 from src.clickup.client import ClickUpClient
 
-
 SPACE_ID = "1300410000030282"
 TARGET_LIST_NAME = "RA Billing"
+
+
+"""
+Loads credentials and creates or reuses the configured RA Billing list.
+"""
 
 
 def main() -> None:
@@ -18,11 +27,7 @@ def main() -> None:
     lists = lists_result.get("lists", [])
 
     existing = next(
-        (
-            item
-            for item in lists
-            if item.get("name") == TARGET_LIST_NAME
-        ),
+        (item for item in lists if item.get("name") == TARGET_LIST_NAME),
         None,
     )
 

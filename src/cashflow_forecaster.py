@@ -10,6 +10,7 @@ Important rules:
 - Payment is received 30 days after submission.
 - Retention release is outside the forecast window.
 - Mobilisation advance is fully recovered by RA-04.
+This file is needed to estimate when earned work becomes cash so the project team can plan upcoming receipts.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.clickup.client import ClickUpClient
-
 
 DATA_DIR = Path("data/raw")
 
@@ -82,13 +82,21 @@ class CashflowMonth:
     source: str
 
 
+"""
+Converts an input amount to Decimal so forecast and contract calculations remain precise.
+"""
+
+
 def decimal(value: str) -> Decimal:
     try:
         return Decimal(value.strip())
     except Exception as exc:
-        raise CashflowDataError(
-            f"Invalid decimal value: {value!r}"
-        ) from exc
+        raise CashflowDataError(f"Invalid decimal value: {value!r}") from exc
+
+
+"""
+Parses a schedule date so activities can be matched to their expected finish months.
+"""
 
 
 def parse_datetime(value: str) -> datetime:
@@ -97,16 +105,17 @@ def parse_datetime(value: str) -> datetime:
     try:
         return datetime.fromisoformat(value)
     except ValueError as exc:
-        raise CashflowDataError(
-            f"Invalid XER datetime: {value!r}"
-        ) from exc
+        raise CashflowDataError(f"Invalid XER datetime: {value!r}") from exc
+
+
+"""
+Reads controlled CSV data into rows so forecast inputs share one consistent loading method.
+"""
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
     if not path.exists():
-        raise CashflowDataError(
-            f"Input file does not exist: {path}"
-        )
+        raise CashflowDataError(f"Input file does not exist: {path}")
 
     with path.open(
         "r",
@@ -114,6 +123,11 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         newline="",
     ) as handle:
         return list(csv.DictReader(handle))
+
+
+"""
+Loads BOQ items so remaining scheduled work can be valued at its contract rates.
+"""
 
 
 def load_boq(path: Path) -> list[BoqItem]:
@@ -135,31 +149,23 @@ def load_boq(path: Path) -> list[BoqItem]:
     missing = required - set(rows[0].keys())
 
     if missing:
-        raise CashflowDataError(
-            f"BOQ missing columns: {sorted(missing)}"
-        )
+        raise CashflowDataError(f"BOQ missing columns: {sorted(missing)}")
 
     items: list[BoqItem] = []
 
     for row in rows:
         wbs_codes = tuple(
-            code.strip()
-            for code in row["wbs_activity"].split("|")
-            if code.strip()
+            code.strip() for code in row["wbs_activity"].split("|") if code.strip()
         )
 
         if not wbs_codes:
-            raise CashflowDataError(
-                f"{row['boq_item']} has no linked activity."
-            )
+            raise CashflowDataError(f"{row['boq_item']} has no linked activity.")
 
         contract_qty = decimal(row["contract_qty"])
         rate = decimal(row["rate_inr"])
 
         if contract_qty < 0 or rate < 0:
-            raise CashflowDataError(
-                f"Negative BOQ value for {row['boq_item']}."
-            )
+            raise CashflowDataError(f"Negative BOQ value for {row['boq_item']}.")
 
         items.append(
             BoqItem(
@@ -176,6 +182,11 @@ def load_boq(path: Path) -> list[BoqItem]:
     return items
 
 
+"""
+Loads previously billed quantities so the forecast counts only work that remains unbilled.
+"""
+
+
 def load_cumulative_billed(path: Path) -> dict[str, Decimal]:
     rows = read_csv(path)
 
@@ -185,16 +196,13 @@ def load_cumulative_billed(path: Path) -> dict[str, Decimal]:
     }
 
     if not rows:
-        raise CashflowDataError(
-            "Cumulative billed file is empty."
-        )
+        raise CashflowDataError("Cumulative billed file is empty.")
 
     missing = required - set(rows[0].keys())
 
     if missing:
         raise CashflowDataError(
-            "Cumulative billed file missing columns: "
-            f"{sorted(missing)}"
+            "Cumulative billed file missing columns: " f"{sorted(missing)}"
         )
 
     cumulative: dict[str, Decimal] = {}
@@ -203,15 +211,16 @@ def load_cumulative_billed(path: Path) -> dict[str, Decimal]:
         boq_item = row["boq_item"].strip()
 
         if boq_item in cumulative:
-            raise CashflowDataError(
-                f"Duplicate cumulative entry: {boq_item}"
-            )
+            raise CashflowDataError(f"Duplicate cumulative entry: {boq_item}")
 
-        cumulative[boq_item] = decimal(
-            row["cumulative_qty_billed"]
-        )
+        cumulative[boq_item] = decimal(row["cumulative_qty_billed"])
 
     return cumulative
+
+
+"""
+Loads and validates schedule activities so remaining work can be assigned to expected finish months.
+"""
 
 
 def load_schedule(
@@ -220,13 +229,9 @@ def load_schedule(
     """Load TASK records from a tab-separated Primavera XER file."""
 
     if not path.exists():
-        raise CashflowDataError(
-            f"XER file does not exist: {path}"
-        )
+        raise CashflowDataError(f"XER file does not exist: {path}")
 
-    lines = path.read_text(
-        encoding="utf-8-sig"
-    ).splitlines()
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
 
     task_start = None
 
@@ -236,9 +241,7 @@ def load_schedule(
             break
 
     if task_start is None:
-        raise CashflowDataError(
-            "XER TASK section not found."
-        )
+        raise CashflowDataError("XER TASK section not found.")
 
     header_index = None
 
@@ -253,13 +256,10 @@ def load_schedule(
             break
 
     if header_index is None:
-        raise CashflowDataError(
-            "XER TASK header not found."
-        )
+        raise CashflowDataError("XER TASK header not found.")
 
     task_header = [
-        field.strip()
-        for field in lines[header_index][2:].strip().split("\t")
+        field.strip() for field in lines[header_index][2:].strip().split("\t")
     ]
 
     required_fields = {
@@ -277,28 +277,21 @@ def load_schedule(
 
     if missing:
         raise CashflowDataError(
-            f"XER TASK header missing fields: "
-            f"{sorted(missing)}"
+            f"XER TASK header missing fields: " f"{sorted(missing)}"
         )
 
-    column_index = {
-        name: index
-        for index, name in enumerate(task_header)
-    }
+    column_index = {name: index for index, name in enumerate(task_header)}
 
     activities: list[ScheduleActivity] = []
 
-    for line in lines[header_index + 1:]:
+    for line in lines[header_index + 1 :]:
         if line.startswith("%T"):
             break
 
         if not line.startswith("%R"):
             continue
 
-        fields = [
-            field.strip()
-            for field in line[2:].strip().split("\t")
-        ]
+        fields = [field.strip() for field in line[2:].strip().split("\t")]
 
         if len(fields) != len(task_header):
             raise CashflowDataError(
@@ -313,26 +306,16 @@ def load_schedule(
         task_type = fields[column_index["task_type"]]
         status_code = fields[column_index["status_code"]]
 
-        target_start_raw = fields[
-            column_index["target_start_date"]
-        ]
+        target_start_raw = fields[column_index["target_start_date"]]
 
-        target_end_raw = fields[
-            column_index["target_end_date"]
-        ]
+        target_end_raw = fields[column_index["target_end_date"]]
 
         if not target_start_raw or not target_end_raw:
-            raise CashflowDataError(
-                f"Missing target dates for {task_code}."
-            )
+            raise CashflowDataError(f"Missing target dates for {task_code}.")
 
-        target_start = parse_datetime(
-            target_start_raw
-        )
+        target_start = parse_datetime(target_start_raw)
 
-        target_end = parse_datetime(
-            target_end_raw
-        )
+        target_end = parse_datetime(target_end_raw)
 
         activities.append(
             ScheduleActivity(
@@ -347,20 +330,20 @@ def load_schedule(
         )
 
     if not activities:
-        raise CashflowDataError(
-            "No XER TASK activities found."
-        )
+        raise CashflowDataError("No XER TASK activities found.")
 
     return activities
+
+
+"""
+Calculates expected payment timing from the contract's submission and payment rules.
+"""
 
 
 def payment_date_for_work_month(
     work_month: str,
 ) -> date:
-    year, month = (
-        int(part)
-        for part in work_month.split("-")
-    )
+    year, month = (int(part) for part in work_month.split("-"))
 
     if month == 12:
         submission_year = year + 1
@@ -380,31 +363,36 @@ def payment_date_for_work_month(
     return submission_date + timedelta(days=30)
 
 
+"""
+Calculates unbilled quantity for an item so the forecast does not count work already billed.
+"""
+
+
 def remaining_quantity(
     item: BoqItem,
     cumulative: dict[str, Decimal],
 ) -> Decimal:
     if item.boq_item not in cumulative:
         raise CashflowDataError(
-            f"No cumulative billed quantity for "
-            f"{item.boq_item}."
+            f"No cumulative billed quantity for " f"{item.boq_item}."
         )
 
     billed = cumulative[item.boq_item]
 
     if billed < 0:
-        raise CashflowDataError(
-            f"Negative billed quantity for "
-            f"{item.boq_item}."
-        )
+        raise CashflowDataError(f"Negative billed quantity for " f"{item.boq_item}.")
 
     if billed > item.contract_qty:
         raise CashflowDataError(
-            f"{item.boq_item} is already billed above "
-            f"its contract quantity."
+            f"{item.boq_item} is already billed above " f"its contract quantity."
         )
 
     return item.contract_qty - billed
+
+
+"""
+Links BOQ items to schedule activities so forecast timing follows the activity that delivers each item.
+"""
 
 
 def build_activity_map(
@@ -415,13 +403,17 @@ def build_activity_map(
     for activity in activities:
         if activity.task_code in activity_map:
             raise CashflowDataError(
-                f"Duplicate schedule activity code: "
-                f"{activity.task_code}"
+                f"Duplicate schedule activity code: " f"{activity.task_code}"
             )
 
         activity_map[activity.task_code] = activity
 
     return activity_map
+
+
+"""
+Builds item-level forecast rows so expected billings and receipt dates can be reviewed in detail.
+"""
 
 
 def build_forecast_lines(
@@ -449,30 +441,21 @@ def build_forecast_lines(
         for code in activity_codes:
             if code not in activity_map:
                 raise CashflowDataError(
-                    f"{item.boq_item} references missing "
-                    f"schedule activity {code}."
+                    f"{item.boq_item} references missing " f"schedule activity {code}."
                 )
 
-            matching_activities.append(
-                activity_map[code]
-            )
+            matching_activities.append(activity_map[code])
 
         finish_activity = max(
             matching_activities,
             key=lambda activity: activity.target_end,
         )
 
-        finish_month = (
-            finish_activity.target_end.strftime("%Y-%m")
-        )
+        finish_month = finish_activity.target_end.strftime("%Y-%m")
 
-        gross_value = (
-            remaining * item.rate_inr
-        )
+        gross_value = remaining * item.rate_inr
 
-        payment_date = payment_date_for_work_month(
-            finish_month
-        )
+        payment_date = payment_date_for_work_month(finish_month)
 
         lines.append(
             ForecastLine(
@@ -487,6 +470,11 @@ def build_forecast_lines(
     return lines
 
 
+"""
+Calculates expected cash after contractual deductions so the forecast shows net receipts rather than gross bills.
+"""
+
+
 def calculate_net_payable(
     gross_value: Decimal,
 ) -> Decimal:
@@ -494,6 +482,11 @@ def calculate_net_payable(
     retention = gross_value * RETENTION_RATE
 
     return gross_value + gst - retention
+
+
+"""
+Combines work timing and payment rules into monthly receipt totals so the team can plan cash needs.
+"""
 
 
 def forecast_cashflow(
@@ -514,16 +507,12 @@ def forecast_cashflow(
     ] = {}
 
     for line in forecast_lines:
-        payment_month = (
-            line.payment_date.strftime("%Y-%m")
-        )
+        payment_month = line.payment_date.strftime("%Y-%m")
 
         if payment_month not in totals:
             continue
 
-        future_gross_by_payment_month[
-            payment_month
-        ] = (
+        future_gross_by_payment_month[payment_month] = (
             future_gross_by_payment_month.get(
                 payment_month,
                 Decimal("0"),
@@ -531,24 +520,22 @@ def forecast_cashflow(
             + line.gross_value
         )
 
-    for payment_month, gross in (
-        future_gross_by_payment_month.items()
-    ):
-        totals[payment_month] += (
-            calculate_net_payable(gross)
-        )
+    for payment_month, gross in future_gross_by_payment_month.items():
+        totals[payment_month] += calculate_net_payable(gross)
 
     return [
         CashflowMonth(
             month=month,
             amount_inr=totals[month],
-            source=(
-                "Paid historical RA plus "
-                "scheduled remaining work"
-            ),
+            source=("Paid historical RA plus " "scheduled remaining work"),
         )
         for month in FORECAST_MONTHS
     ]
+
+
+"""
+Reads recorded bill payments so known receipts can be separated from forecast work.
+"""
 
 
 def load_paid_or_due_bill_payments(
@@ -565,17 +552,12 @@ def load_paid_or_due_bill_payments(
     }
 
     if not rows:
-        raise CashflowDataError(
-            "Bill register is empty."
-        )
+        raise CashflowDataError("Bill register is empty.")
 
     missing = required - set(rows[0].keys())
 
     if missing:
-        raise CashflowDataError(
-            "Bill register missing columns: "
-            f"{sorted(missing)}"
-        )
+        raise CashflowDataError("Bill register missing columns: " f"{sorted(missing)}")
 
     payments: dict[str, Decimal] = {}
 
@@ -586,18 +568,14 @@ def load_paid_or_due_bill_payments(
         if status != "PAID" or not paid_on_raw:
             continue
 
-        paid_date = date.fromisoformat(
-            paid_on_raw
-        )
+        paid_date = date.fromisoformat(paid_on_raw)
 
         paid_month = paid_date.strftime("%Y-%m")
 
         if paid_month not in FORECAST_MONTHS:
             continue
 
-        gross = decimal(
-            row["gross_value_inr"]
-        )
+        gross = decimal(row["gross_value_inr"])
 
         # Historical paid bills contain the actual
         # gross register value, but cash received must
@@ -610,9 +588,7 @@ def load_paid_or_due_bill_payments(
         # so historical cash receipts are supplied below
         # from the known paid bill values.
         if row["bill_no"].strip() == "RA-03":
-            raise CashflowDataError(
-                "RA-03 is not marked PAID."
-            )
+            raise CashflowDataError("RA-03 is not marked PAID.")
 
         payments[paid_month] = (
             payments.get(
@@ -623,6 +599,11 @@ def load_paid_or_due_bill_payments(
         )
 
     return payments
+
+
+"""
+Totals known cash receipts so the forecast includes payments already recorded in project data.
+"""
 
 
 def build_existing_cash_receipts() -> dict[str, Decimal]:
@@ -643,6 +624,11 @@ def build_existing_cash_receipts() -> dict[str, Decimal]:
     }
 
 
+"""
+Formats forecast details for a ClickUp task so the project team can read the cash outlook there.
+"""
+
+
 def build_clickup_description(
     forecast_lines: list[ForecastLine],
     cashflow: list[CashflowMonth],
@@ -658,10 +644,7 @@ def build_clickup_description(
     ]
 
     for month in cashflow:
-        lines.append(
-            f"{month.month} | "
-            f"INR {month.amount_inr:,.2f}"
-        )
+        lines.append(f"{month.month} | " f"INR {month.amount_inr:,.2f}")
 
     lines.extend(
         [
@@ -698,6 +681,11 @@ def build_clickup_description(
     return "\n".join(lines)
 
 
+"""
+Finds the existing forecast task so repeated runs update one record instead of adding duplicates.
+"""
+
+
 def find_existing_cashflow_task(
     client: ClickUpClient,
 ) -> dict | None:
@@ -713,6 +701,11 @@ def find_existing_cashflow_task(
             return task
 
     return None
+
+
+"""
+Creates or refreshes the ClickUp forecast task so the team can access the latest cash outlook.
+"""
 
 
 def create_or_update_cashflow_task(
@@ -736,23 +729,23 @@ def create_or_update_cashflow_task(
 
     return client.create_task(
         RA_BILLING_LIST_ID,
-            name="Cash-flow Forecast - Oct-Dec 2026",
+        name="Cash-flow Forecast - Oct-Dec 2026",
         description=description,
         notify_all=False,
     )
 
+
+"""
+Loads project inputs, calculates cash receipts, and presents or synchronizes the forecast.
+"""
+
+
 def main() -> None:
-    boq = load_boq(
-        DATA_DIR / "boq.csv"
-    )
+    boq = load_boq(DATA_DIR / "boq.csv")
 
-    cumulative = load_cumulative_billed(
-        DATA_DIR / "cumulative_billed_to_RA03.csv"
-    )
+    cumulative = load_cumulative_billed(DATA_DIR / "cumulative_billed_to_RA03.csv")
 
-    activities = load_schedule(
-        DATA_DIR / "SCP2_schedule.xer"
-    )
+    activities = load_schedule(DATA_DIR / "SCP2_schedule.xer")
 
     forecast_lines = build_forecast_lines(
         boq,
@@ -782,11 +775,7 @@ def main() -> None:
     print()
     print("Monthly cash inflow:")
     for month in cashflow:
-        print(
-            f"{month.month} | "
-            f"INR {month.amount_inr:,.2f}"
-        )
-
+        print(f"{month.month} | " f"INR {month.amount_inr:,.2f}")
 
     print()
     print("Writing forecast to ClickUp...")
@@ -805,6 +794,7 @@ def main() -> None:
     print(f"Task ID: {task.get('id')}")
     print(f"Task name: {task.get('name')}")
     print(f"List ID: {RA_BILLING_LIST_ID}")
+
 
 if __name__ == "__main__":
     main()

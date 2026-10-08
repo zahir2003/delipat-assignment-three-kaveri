@@ -1,3 +1,8 @@
+"""
+This file prepares the ClickUp list used for schedule and WBS records.
+We need it so imported activities have a known destination in the project workspace.
+"""
+
 """Create the first Kaveri ClickUp List idempotently."""
 
 import os
@@ -6,10 +11,14 @@ from dotenv import load_dotenv
 
 from src.clickup.client import ClickUpClient
 
-
 SPACE_ID = "1300410000030282"
 EXISTING_LIST_ID = "1300410000039999"
 TARGET_LIST_NAME = "Schedule & WBS"
+
+
+"""
+Loads credentials and creates or reuses the configured schedule list.
+"""
 
 
 def main() -> None:

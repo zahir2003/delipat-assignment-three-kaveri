@@ -1,3 +1,8 @@
+"""
+This file creates one controlled schedule task in ClickUp as an integration check.
+We need it to confirm task creation works before synchronizing the full project schedule.
+"""
+
 """Create one controlled ClickUp task from the parsed XER schedule."""
 
 import os
@@ -9,9 +14,13 @@ from dotenv import load_dotenv
 from src.clickup.client import ClickUpClient
 from src.schedule_importer import parse_xer
 
-
 LIST_ID = "1300410000039999"
 XER_PATH = Path("data/raw/SCP2_schedule.xer")
+
+
+"""
+Converts a schedule date to ClickUp's timestamp format so the test task can use a valid due date.
+"""
 
 
 def to_epoch_ms(value: str) -> int:
@@ -24,6 +33,11 @@ def to_epoch_ms(value: str) -> int:
     return int(parsed.timestamp() * 1000)
 
 
+"""
+Loads one activity and creates its test task so the ClickUp write path can be checked.
+"""
+
+
 def main() -> None:
     load_dotenv()
 
@@ -32,10 +46,7 @@ def main() -> None:
 
     schedule = parse_xer(XER_PATH)
 
-    task = next(
-        item for item in schedule.tasks
-        if item.task_code == "A1000"
-    )
+    task = next(item for item in schedule.tasks if item.task_code == "A1000")
 
     print("XER task selected:")
     print(f"  Code: {task.task_code}")
@@ -68,9 +79,7 @@ def main() -> None:
     start_date = to_epoch_ms(task.target_start_date)
     due_date = to_epoch_ms(task.target_end_date)
 
-    time_estimate = int(
-        task.target_duration_hours * 60 * 60 * 1000
-    )
+    time_estimate = int(task.target_duration_hours * 60 * 60 * 1000)
 
     description = (
         "Source: Primavera P6 XER\n"

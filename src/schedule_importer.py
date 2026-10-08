@@ -1,4 +1,6 @@
 """Primavera P6 XER schedule importer.
+This file parses and validates Primavera XER schedules before they are used by reports or integrations.
+We need it to catch source-data problems and provide structured schedule records to the rest of the project.
 
 The parser is intentionally independent from ClickUp so that the XER data
 can be validated before any API write takes place.
@@ -22,7 +24,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 XER_FILE = PROJECT_ROOT / "data" / "raw" / "SCP2_schedule.xer"
@@ -95,6 +96,11 @@ class Schedule:
     dependencies: list[Dependency]
 
 
+"""
+Parses a Primavera date value into a consistent format for schedule comparisons and reports.
+"""
+
+
 def parse_date(value: str) -> str | None:
     """Validate and normalize an XER date."""
     value = value.strip()
@@ -107,14 +113,29 @@ def parse_date(value: str) -> str | None:
     return value
 
 
+"""
+Converts a schedule field to a number so durations and progress values can be checked consistently.
+"""
+
+
 def parse_number(value: str) -> float:
     """Parse a numeric XER field."""
     return float(value.strip())
 
 
+"""
+Splits one XER record into fields so the parser can read its individual values.
+"""
+
+
 def split_xer_line(line: str) -> list[str]:
     """Split an XER record while preserving empty fields."""
     return line.rstrip("\r\n").split("\t")
+
+
+"""
+Reads an XER file and builds structured schedule records so downstream code does not parse raw text.
+"""
 
 
 def parse_xer(path: Path) -> Schedule:
@@ -155,9 +176,7 @@ def parse_xer(path: Path) -> Schedule:
                     raise ValueError("%R encountered before %T")
 
                 if not fields:
-                    raise ValueError(
-                        f"%R encountered without %F in {current_section}"
-                    )
+                    raise ValueError(f"%R encountered without %F in {current_section}")
 
                 values = parts[1:]
 
@@ -177,6 +196,11 @@ def parse_xer(path: Path) -> Schedule:
     return build_schedule(sections)
 
 
+"""
+Combines parsed XER sections into schedule objects so activities and their relationships can be used together.
+"""
+
+
 def build_schedule(sections: dict[str, list[dict[str, str]]]) -> Schedule:
     """Convert parsed XER dictionaries into typed schedule objects."""
 
@@ -187,19 +211,15 @@ def build_schedule(sections: dict[str, list[dict[str, str]]]) -> Schedule:
     dependency_rows = sections.get("TASKPRED", [])
 
     if len(project_rows) != 1:
-        raise ValueError(
-            f"Expected exactly one PROJECT row, found {len(project_rows)}"
-        )
+        raise ValueError(f"Expected exactly one PROJECT row, found {len(project_rows)}")
 
     project_row = project_rows[0]
 
     project = Project(
         proj_id=project_row["proj_id"],
         proj_short_name=project_row["proj_short_name"],
-        plan_start_date=parse_date(project_row["plan_start_date"])
-        or "",
-        last_recalc_date=parse_date(project_row["last_recalc_date"])
-        or "",
+        plan_start_date=parse_date(project_row["plan_start_date"]) or "",
+        last_recalc_date=parse_date(project_row["last_recalc_date"]) or "",
         clndr_id=project_row["clndr_id"],
     )
 
@@ -236,16 +256,12 @@ def build_schedule(sections: dict[str, list[dict[str, str]]]) -> Schedule:
             task_name=row["task_name"],
             task_type=row["task_type"],
             status_code=row["status_code"],
-            target_duration_hours=parse_number(
-                row["target_drtn_hr_cnt"]
-            ),
+            target_duration_hours=parse_number(row["target_drtn_hr_cnt"]),
             target_start_date=parse_date(row["target_start_date"]) or "",
             target_end_date=parse_date(row["target_end_date"]) or "",
             actual_start_date=parse_date(row["act_start_date"]),
             actual_end_date=parse_date(row["act_end_date"]),
-            physical_complete_pct=parse_number(
-                row["phys_complete_pct"]
-            ),
+            physical_complete_pct=parse_number(row["phys_complete_pct"]),
         )
         for row in task_rows
     ]
@@ -272,6 +288,11 @@ def build_schedule(sections: dict[str, list[dict[str, str]]]) -> Schedule:
     )
 
 
+"""
+Checks schedule records and links so missing or inconsistent data is found before it is used elsewhere.
+"""
+
+
 def validate_schedule(schedule: Schedule) -> list[str]:
     """Return validation errors without modifying source data."""
     errors: list[str] = []
@@ -290,21 +311,17 @@ def validate_schedule(schedule: Schedule) -> list[str]:
     for item in schedule.wbs:
         if item.parent_wbs_id and item.parent_wbs_id not in wbs_ids:
             errors.append(
-                f"WBS {item.wbs_id} references missing parent "
-                f"{item.parent_wbs_id}"
+                f"WBS {item.wbs_id} references missing parent " f"{item.parent_wbs_id}"
             )
 
     for task in schedule.tasks:
         if task.wbs_id not in wbs_ids:
             errors.append(
-                f"Task {task.task_code} references missing WBS "
-                f"{task.wbs_id}"
+                f"Task {task.task_code} references missing WBS " f"{task.wbs_id}"
             )
 
         if not 0 <= task.physical_complete_pct <= 100:
-            errors.append(
-                f"Task {task.task_code} has invalid completion percentage"
-            )
+            errors.append(f"Task {task.task_code} has invalid completion percentage")
 
     dependency_ids: set[str] = set()
 
@@ -322,13 +339,16 @@ def validate_schedule(schedule: Schedule) -> list[str]:
             )
 
         if dependency.task_pred_id in dependency_ids:
-            errors.append(
-                f"Duplicate dependency ID {dependency.task_pred_id}"
-            )
+            errors.append(f"Duplicate dependency ID {dependency.task_pred_id}")
 
         dependency_ids.add(dependency.task_pred_id)
 
     return errors
+
+
+"""
+Builds stable identifiers for schedule records so repeated imports can match the same source items.
+"""
 
 
 def build_source_keys(schedule: Schedule) -> dict[str, list[str]]:
@@ -340,39 +360,35 @@ def build_source_keys(schedule: Schedule) -> dict[str, list[str]]:
         raise ValueError("Cannot build source keys without a project")
 
     return {
-        "project": [
-            f"xer:project:{schedule.project.proj_id}"
-        ],
-        "wbs": [
-            f"xer:wbs:{item.wbs_id}"
-            for item in schedule.wbs
-        ],
-        "tasks": [
-            f"xer:task:{item.task_id}"
-            for item in schedule.tasks
-        ],
+        "project": [f"xer:project:{schedule.project.proj_id}"],
+        "wbs": [f"xer:wbs:{item.wbs_id}" for item in schedule.wbs],
+        "tasks": [f"xer:task:{item.task_id}" for item in schedule.tasks],
         "dependencies": [
-            f"xer:dependency:{item.task_pred_id}"
-            for item in schedule.dependencies
+            f"xer:dependency:{item.task_pred_id}" for item in schedule.dependencies
         ],
     }
+
+
+"""
+Converts schedule objects to dictionaries so the results can be serialized or passed to other tools.
+"""
+
 
 def schedule_to_dict(schedule: Schedule) -> dict[str, Any]:
     """Serialize the parsed schedule."""
     return {
-        "project": asdict(schedule.project)
-        if schedule.project
-        else None,
+        "project": asdict(schedule.project) if schedule.project else None,
         "calendars": [asdict(item) for item in schedule.calendars],
         "wbs": [asdict(item) for item in schedule.wbs],
         "tasks": [asdict(item) for item in schedule.tasks],
-        "dependencies": [
-            asdict(item)
-            for item in schedule.dependencies
-        ],
+        "dependencies": [asdict(item) for item in schedule.dependencies],
         "source_keys": build_source_keys(schedule),
     }
 
+
+"""
+Parses and validates the controlled XER from the command line so the source schedule can be checked directly.
+"""
 
 
 def main() -> None:

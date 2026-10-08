@@ -1,3 +1,8 @@
+"""
+This file turns the validated RA-04 bill into a client-facing PDF.
+We need it to present calculated quantities and amounts clearly without recalculating the bill.
+"""
+
 """Generate the client-facing RA-04 bill PDF from the validated bill object."""
 
 from decimal import Decimal
@@ -18,17 +23,31 @@ from reportlab.platypus import (
 
 from src.clickup.ra_billing import load_ra04_bill
 
-
 OUTPUT_DIR = Path("data/processed")
 OUTPUT_FILE = OUTPUT_DIR / "Kaveri_SCP2_RA04_September_2026.pdf"
+
+
+"""
+Formats a bill amount as rupees so financial figures are consistent and easy to review.
+"""
 
 
 def money(value: Decimal) -> str:
     return f"INR{value: ,.2f}"
 
 
+"""
+Formats a measured quantity so bill lines show readable and consistent units.
+"""
+
+
 def qty(value: Decimal) -> str:
     return f"{value:g}"
+
+
+"""
+Builds the RA-04 PDF from the calculated bill so the client receives a printable billing statement.
+"""
 
 
 def build_pdf(output_file: Path = OUTPUT_FILE) -> Path:
@@ -327,9 +346,7 @@ def build_pdf(output_file: Path = OUTPUT_FILE) -> Path:
 
     for line in bill.lines:
         if line.exclusion_reason:
-            notes.append(
-                f"{line.boq_item}: {line.exclusion_reason}"
-            )
+            notes.append(f"{line.boq_item}: {line.exclusion_reason}")
 
         if line.variation_qty:
             notes.append(
@@ -386,6 +403,11 @@ def build_pdf(output_file: Path = OUTPUT_FILE) -> Path:
     document.build(story)
 
     return output_file
+
+
+"""
+Runs PDF creation from the command line and reports where the bill was saved.
+"""
 
 
 def main() -> None:

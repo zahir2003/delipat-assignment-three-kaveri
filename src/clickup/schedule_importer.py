@@ -1,3 +1,8 @@
+"""
+This file imports validated schedule records into ClickUp and maintains their hierarchy.
+We need it so teams can review activities in ClickUp while repeat runs update rather than duplicate records.
+"""
+
 """Idempotent XER schedule importer for ClickUp.
 
 Current implementation:
@@ -20,9 +25,13 @@ from dotenv import load_dotenv
 from src.clickup.client import ClickUpClient
 from src.schedule_importer import parse_xer
 
-
 LIST_ID = "1300410000039999"
 XER_PATH = Path("data/raw/SCP2_schedule.xer")
+
+
+"""
+Converts a schedule date to ClickUp's millisecond timestamp format so task dates match the XER.
+"""
 
 
 def to_epoch_ms(value: str) -> int:
@@ -40,6 +49,11 @@ def to_epoch_ms(value: str) -> int:
     return int(parsed.timestamp() * 1000)
 
 
+"""
+Finds a task by its stable source key so imports can update existing records instead of duplicating them.
+"""
+
+
 def find_existing_task(
     tasks: list[dict],
     source_key: str,
@@ -55,6 +69,11 @@ def find_existing_task(
     return None
 
 
+"""
+Builds a readable WBS description so the hierarchy's purpose remains clear in ClickUp.
+"""
+
+
 def build_wbs_description(wbs) -> str:
     """Build a traceable ClickUp description for a WBS node."""
 
@@ -67,6 +86,11 @@ def build_wbs_description(wbs) -> str:
         f"Project ID: {wbs.proj_id}\n"
         f"Parent WBS ID: {wbs.parent_wbs_id or 'None'}"
     )
+
+
+"""
+Builds an activity description from schedule fields so ClickUp users can understand the imported task.
+"""
 
 
 def build_task_description(task) -> str:
@@ -92,6 +116,11 @@ def build_task_description(task) -> str:
         f"Actual End: {actual_end}\n"
         f"Physical Completion: {task.physical_complete_pct}%"
     )
+
+
+"""
+Imports or updates WBS entries so ClickUp preserves the schedule's project hierarchy.
+"""
 
 
 def import_wbs(
@@ -141,6 +170,11 @@ def import_wbs(
     return created_count, existing_count
 
 
+"""
+Imports or updates activities and milestones so ClickUp reflects the validated source schedule.
+"""
+
+
 def import_tasks(
     client: ClickUpClient,
     schedule,
@@ -184,17 +218,10 @@ def import_tasks(
             task.target_end_date,
         )
 
-        time_estimate = int(
-            task.target_duration_hours
-            * 60
-            * 60
-            * 1000
-        )
+        time_estimate = int(task.target_duration_hours * 60 * 60 * 1000)
 
         task_kind = (
-            "MILESTONE"
-            if task.task_type in {"TT_FinMile", "TT_Mile"}
-            else "ACTIVITY"
+            "MILESTONE" if task.task_type in {"TT_FinMile", "TT_Mile"} else "ACTIVITY"
         )
 
         created = client.create_task(
@@ -216,6 +243,11 @@ def import_tasks(
         )
 
     return created_count, existing_count
+
+
+"""
+Applies parent relationships so imported activities appear under their correct WBS entries.
+"""
 
 
 def apply_wbs_parents(
@@ -253,10 +285,7 @@ def apply_wbs_parents(
         parent_clickup_id = wbs_clickup_ids.get(task.wbs_id)
 
         if not child_clickup_id:
-            print(
-                f"SKIP | {task.task_code} | "
-                "ClickUp task not found"
-            )
+            print(f"SKIP | {task.task_code} | " "ClickUp task not found")
             skipped_count += 1
             continue
 
@@ -284,13 +313,16 @@ def apply_wbs_parents(
     return updated_count, skipped_count
 
 
+"""
+Loads and validates the XER schedule, then synchronizes its records to ClickUp.
+"""
+
+
 def main() -> None:
     load_dotenv()
 
     if not os.getenv("CLICKUP_API_TOKEN"):
-        raise ValueError(
-            "CLICKUP_API_TOKEN is not configured"
-        )
+        raise ValueError("CLICKUP_API_TOKEN is not configured")
 
     schedule = parse_xer(XER_PATH)
 
@@ -339,16 +371,10 @@ def main() -> None:
     print(f"WBS created: {wbs_created}")
     print(f"WBS already existed: {wbs_existing}")
     print(f"Tasks/milestones created: {task_created}")
-    print(
-        f"Tasks/milestones already existed: "
-        f"{task_existing}"
-    )
+    print(f"Tasks/milestones already existed: " f"{task_existing}")
     print(f"WBS parent relationships set: {parent_updated}")
     print(f"WBS parent relationships skipped: {parent_skipped}")
-    print(
-        f"Total XER tasks processed: "
-        f"{len(schedule.tasks)}"
-    )
+    print(f"Total XER tasks processed: " f"{len(schedule.tasks)}")
 
 
 if __name__ == "__main__":
